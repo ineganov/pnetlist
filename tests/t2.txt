@@ -1,0 +1,11 @@
+  wire \<const0> ;
+  wire \<const1> ;
+  wire clk;
+  wire clk_IBUF;
+  wire clk_IBUF_BUFG;
+  wire \cnt[0]_i_2_n_0 ;
+  wire \cnt[0]_i_3_n_0 ;
+  wire \cnt[0]_i_4_n_0 ;
+  wire \cnt[0]_i_5_n_0 ;
+  output [15:0]leds;
+

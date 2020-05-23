@@ -7,9 +7,13 @@
 #define MAX_TMP_ALLOC  1024
 #define MAX_TOKENS     65536
 
+
 enum token_e { Tk_Null = 0, Tk_EOF, Tk_LParen, Tk_RParen, Tk_LBrace, Tk_RBrace, Tk_LBracket, Tk_RBracket, Tk_Ident, Tk_Literal, Tk_Semi, Tk_Colon, Tk_Comma, Tk_Hash, Tk_Dot,
                Tk_BaseHex, Tk_BaseDec, Tk_BaseOct, Tk_BaseBin, Tk_Op_Plus, Tk_Op_Minus, Tk_Op_Mul, Tk_Op_Div,
                Tk_Kw_assign, Tk_Kw_begin, Tk_Kw_end, Tk_Kw_endmodule, Tk_Kw_inout, Tk_Kw_input, Tk_Kw_module, Tk_Kw_output, Tk_Kw_reg, Tk_Kw_wire };
+
+char * tk_print[] = { "Tk_Null", "Tk_EOF", "(", ")", "{", "}", "[", "]", "Tk_Ident", "Tk_Literal", ";", ":", ",", "#", ".",
+                      "Tk_BaseHex", "Tk_BaseDec", "Tk_BaseOct", "Tk_BaseBin", "+", "-", "*", "/", "assign", "begin", "end", "endmodule", "inout", "input", "module", "output", "reg", "wire" };
 
 union val_u {
    char c;
@@ -26,8 +30,6 @@ typedef struct token_s {
 struct token_s tok_array[MAX_TOKENS];
 
 void pp_tokens(Token * tok_array, int num_tkn ) {
-   char * tk_print[] = { "Tk_Null", "Tk_EOF", "(", ")", "{", "}", "[", "]", "Tk_Ident", "Tk_Literal", ";", ":", ",", "#", ".",
-                         "Tk_BaseHex", "Tk_BaseDec", "Tk_BaseOct", "Tk_BaseBin", "+", "-", "*", "/", "assign", "begin", "end", "endmodule", "inout", "input", "module", "output", "reg", "wire" };
 
    int line_num = 0;
    for (int i = 0; i < num_tkn; ++i) {
@@ -55,16 +57,16 @@ void pp_tokens(Token * tok_array, int num_tkn ) {
    return;
 }
 
+static int stash_allocated = 0;
+
 char * string_stash(char * src, int len)
 {
    static char string_array[MAX_ALLOC];
-   static int allocated = 0;
 
-   if (allocated + len < MAX_ALLOC) {
-      int old_alloc = allocated;
-      for (int i = 0; i < len; ++i) string_array[allocated++] = src[i];
-      string_array[allocated++] = '\0';
-      printf(" -- allocated %d bytes\n", len + 1);
+   if (stash_allocated + len < MAX_ALLOC) {
+      int old_alloc = stash_allocated;
+      for (int i = 0; i < len; ++i) string_array[stash_allocated++] = src[i];
+      string_array[stash_allocated++] = '\0';
       return &string_array[old_alloc];
    }
    else {
@@ -218,11 +220,67 @@ void tokenize_file (const char * filepath) {
    return;
 }
 
+struct Wire_Decl {
+   char *name;
+   int hi, lo;
+   int is_bus;
+};
+
+struct Mod_Inst {
+   char *name;
+   char **params;
+   char **conns;
+};
+
+struct module_entity {
+   enum   { M_Ent_Inst, M_Ent_Wire, M_Ent_Input, M_Ent_Output } kind;
+   union  { struct Mod_Inst  mod_inst;
+            struct Wire_Decl wire_decl;
+            struct Wire_Decl input_decl;
+            struct Wire_Decl output_decl; } ent;
+};
+
+struct module_def {
+   char *name;
+
+   int   num_io;
+   char **module_io;
+
+   int   num_entities;
+   struct module_entity **entities;
+};
+
+Token * expect(Token * tok_array, enum token_e expectation) {
+   if( tok_array->kind == expectation) { return ++tok_array; }
+   else {
+      printf("At line %d: expected token: '%s', and got: '%s'\n", tok_array->line_num, tk_print[expectation], tk_print[tok_array->kind]);
+      exit(3);
+   }
+}
+
+struct module_def * parse_module_def(Token * tk) {
+   struct module_def * md = malloc(sizeof(struct module_def));
+
+   expect(tk, Tk_Kw_module); tk++;
+
+   expect(tk, Tk_Ident);
+   md->name = tk->val.str; tk++;
+
+   expect(tk, Tk_Semi); tk++;
+   expect(tk, Tk_Kw_endmodule);
+
+   return md;
+}
+
+
 int main(int ac, char **av) {
    printf("int: %lu, long: %lu, struct: %lu, enum: %lu\n", sizeof(int), sizeof(long), sizeof(struct token_s), sizeof(enum token_e) );
 
    for (char **q = av; *q != NULL; ++q) printf(">> %s\n", *q);
 
    tokenize_file(av[1]);
+   printf("\nAllocated %d bytes for string stash\n\n", stash_allocated);
+
+   parse_module_def(tok_array);
 
 }

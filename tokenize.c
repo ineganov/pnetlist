@@ -11,10 +11,6 @@ enum token_e { Tk_Null = 0, Tk_EOF, Tk_LParen, Tk_RParen, Tk_LBrace, Tk_RBrace, 
                Tk_Op_Plus, Tk_Op_Minus, Tk_Op_Mul, Tk_Op_Div,
                Tk_Kw_assign, Tk_Kw_begin, Tk_Kw_end, Tk_Kw_endmodule, Tk_Kw_inout, Tk_Kw_input, Tk_Kw_module, Tk_Kw_output, Tk_Kw_reg, Tk_Kw_wire };
 
-char * tk_print[] = { "Tk_Null", "Tk_EOF", "Tk_LParen", "Tk_RParen", "Tk_LBrace", "Tk_RBrace", "Tk_LBracket", "Tk_RBracket", "Tk_Ident", "Tk_Literal", "Tk_Semi", "Tk_Colon", "Tk_Comma", "Tk_Hash",
-                      "Tk_Op_Plus", "Tk_Op_Minus", "Tk_Op_Mul", "Tk_Op_Div",
-                      "Tk_Kw_assign", "Tk_Kw_begin", "Tk_Kw_end", "Tk_Kw_endmodule", "Tk_Kw_inout", "Tk_Kw_input", "Tk_Kw_module", "Tk_Kw_output", "Tk_Kw_reg", "Tk_Kw_wire" };
-
 union val_u {
    char c;
    char * str;
@@ -30,15 +26,24 @@ typedef struct token_s {
 struct token_s tok_array[MAX_TOKENS];
 
 void pp_tokens(Token * tok_array, int num_tkn ) {
-   for (int i = 0; i < num_tkn; ++i) {
-      if (tok_array[i].kind == Tk_Ident)
-         printf(" Line %d: %-20s -> \"%s\"\n", tok_array[i].line_num, tk_print[tok_array[i].kind], tok_array[i].val.str );
-      else if (tok_array[i].kind == Tk_Literal)
-         printf(" Line %d: %-20s -> %d\n", tok_array[i].line_num, tk_print[tok_array[i].kind], tok_array[i].val.val );
-      else
-         printf(" Line %d: %-20s\n", tok_array[i].line_num, tk_print[tok_array[i].kind] );
-   }
+   char * tk_print[] = { "Tk_Null", "Tk_EOF", "(", ")", "{", "}", "[", "]", "Tk_Ident", "Tk_Literal", ";", ":", ",", "#",
+                         "+", "-", "*", "/", "assign", "begin", "end", "endmodule", "inout", "input", "module", "output", "reg", "wire" };
 
+   int line_num = 0;
+   for (int i = 0; i < num_tkn; ++i) {
+      if(tok_array[i].line_num != line_num) {
+         line_num = tok_array[i].line_num;
+         printf("\nLine %4d: ", line_num);
+      }
+
+      if (tok_array[i].kind == Tk_Ident)
+         printf(" <Id %s> ", tok_array[i].val.str );
+      else if (tok_array[i].kind == Tk_Literal)
+         printf(" <Lt %d> ", tok_array[i].val.val );
+      else
+         printf(" %s ", tk_print[tok_array[i].kind] );
+   }
+   printf("\n");
    return;
 }
 
@@ -117,7 +122,7 @@ int tokenize(char * char_stream, long size, struct token_s tok_array[]) {
       }
       else if(char_stream[pos] == '\\') {
          int len = take_while(isnotspace, &char_stream[pos]);
-         char *s = string_stash(&char_stream[pos], len);
+         char *s = string_stash(&char_stream[pos+1], len); // Drop the slash itself
          tok_array[num_tkn++] = (Token) { .kind = Tk_Ident, .val.str = s, .line_num = line_num };
          pos += len+1; //Final space needs to be eaten
       }

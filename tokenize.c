@@ -105,8 +105,9 @@ enum token_e is_keyword(char * str) {
    return Tk_Ident;
 }
 
-int isidentsym(int c) { return c == '_' || isalnum(c);  }
-int isnotspace(int c) { return ! isspace(c); }
+int isidentsym  (int c) { return c == '_' || isalnum(c);  }
+int isnotspace  (int c) { return ! isspace(c); }
+int isnotnewline(int c) { return c != '\n'; }
 
 int tokenize(char * char_stream, long size, struct token_s tok_array[]) {
    int num_tkn  = 0;
@@ -132,6 +133,7 @@ int tokenize(char * char_stream, long size, struct token_s tok_array[]) {
          tok_array[num_tkn++] = (Token) { .kind = Tk_Literal, .val.val = atoi(s), .line_num = line_num };
          pos += len;
       }
+      else if(char_stream[pos] == '/' && char_stream[pos+1] == '/')  { pos +=take_while(isnotnewline, &char_stream[pos]);      }
       else if(char_stream[pos] == '+')  { tok_array[num_tkn++] = (Token) { .kind = Tk_Op_Plus,  .line_num = line_num }; ++pos; }
       else if(char_stream[pos] == '-')  { tok_array[num_tkn++] = (Token) { .kind = Tk_Op_Minus, .line_num = line_num }; ++pos; }
       else if(char_stream[pos] == '*')  { tok_array[num_tkn++] = (Token) { .kind = Tk_Op_Mul,   .line_num = line_num }; ++pos; }

@@ -7,8 +7,8 @@
 #define MAX_TMP_ALLOC  1024
 #define MAX_TOKENS     65536
 
-enum token_e { Tk_Null = 0, Tk_EOF, Tk_LParen, Tk_RParen, Tk_LBrace, Tk_RBrace, Tk_LBracket, Tk_RBracket, Tk_Ident, Tk_Literal, Tk_Semi, Tk_Colon, Tk_Comma, Tk_Hash,
-               Tk_Op_Plus, Tk_Op_Minus, Tk_Op_Mul, Tk_Op_Div,
+enum token_e { Tk_Null = 0, Tk_EOF, Tk_LParen, Tk_RParen, Tk_LBrace, Tk_RBrace, Tk_LBracket, Tk_RBracket, Tk_Ident, Tk_Literal, Tk_Semi, Tk_Colon, Tk_Comma, Tk_Hash, Tk_Dot,
+               Tk_BaseHex, Tk_BaseDec, Tk_BaseOct, Tk_BaseBin, Tk_Op_Plus, Tk_Op_Minus, Tk_Op_Mul, Tk_Op_Div,
                Tk_Kw_assign, Tk_Kw_begin, Tk_Kw_end, Tk_Kw_endmodule, Tk_Kw_inout, Tk_Kw_input, Tk_Kw_module, Tk_Kw_output, Tk_Kw_reg, Tk_Kw_wire };
 
 union val_u {
@@ -26,8 +26,8 @@ typedef struct token_s {
 struct token_s tok_array[MAX_TOKENS];
 
 void pp_tokens(Token * tok_array, int num_tkn ) {
-   char * tk_print[] = { "Tk_Null", "Tk_EOF", "(", ")", "{", "}", "[", "]", "Tk_Ident", "Tk_Literal", ";", ":", ",", "#",
-                         "+", "-", "*", "/", "assign", "begin", "end", "endmodule", "inout", "input", "module", "output", "reg", "wire" };
+   char * tk_print[] = { "Tk_Null", "Tk_EOF", "(", ")", "{", "}", "[", "]", "Tk_Ident", "Tk_Literal", ";", ":", ",", "#", ".",
+                         "Tk_BaseHex", "Tk_BaseDec", "Tk_BaseOct", "Tk_BaseBin", "+", "-", "*", "/", "assign", "begin", "end", "endmodule", "inout", "input", "module", "output", "reg", "wire" };
 
    int line_num = 0;
    for (int i = 0; i < num_tkn; ++i) {
@@ -38,6 +38,14 @@ void pp_tokens(Token * tok_array, int num_tkn ) {
 
       if (tok_array[i].kind == Tk_Ident)
          printf(" <Id %s> ", tok_array[i].val.str );
+      else if (tok_array[i].kind == Tk_BaseHex)
+         printf(" <Hx %s> ", tok_array[i].val.str );
+      else if (tok_array[i].kind == Tk_BaseDec)
+         printf(" <Dc %s> ", tok_array[i].val.str );
+      else if (tok_array[i].kind == Tk_BaseOct)
+         printf(" <Oc %s> ", tok_array[i].val.str );
+      else if (tok_array[i].kind == Tk_BaseBin)
+         printf(" <Bn %s> ", tok_array[i].val.str );
       else if (tok_array[i].kind == Tk_Literal)
          printf(" <Lt %d> ", tok_array[i].val.val );
       else
@@ -108,6 +116,10 @@ enum token_e is_keyword(char * str) {
 int isidentsym  (int c) { return c == '_' || isalnum(c);  }
 int isnotspace  (int c) { return ! isspace(c); }
 int isnotnewline(int c) { return c != '\n'; }
+int ishex       (int c) { return c == '_' || c == 'x' || c == 'z' || c == 'X' || c == 'Z' || ishexnumber(c); }
+int isdec       (int c) { return c == '_' || c == 'x' || c == 'z' || c == 'X' || c == 'Z' || isnumber(c); }
+int isoct       (int c) { return c == '_' || c == 'x' || c == 'z' || c == 'X' || c == 'Z' || (c >= '0' && c <= '7'); }
+int isbin       (int c) { return c == '_' || c == 'x' || c == 'z' || c == 'X' || c == 'Z' || c == '0' || c == '1';  }
 
 int tokenize(char * char_stream, long size, struct token_s tok_array[]) {
    int num_tkn  = 0;
@@ -133,7 +145,36 @@ int tokenize(char * char_stream, long size, struct token_s tok_array[]) {
          tok_array[num_tkn++] = (Token) { .kind = Tk_Literal, .val.val = atoi(s), .line_num = line_num };
          pos += len;
       }
+      else if( char_stream[pos] == '\'' && char_stream[pos+1] == 'h' ) {
+         if (pos + 2 >= size) { printf("Expected hex literal, got EOF\n"); exit(3); }
+         int len = take_while(ishex, &char_stream[pos+2]);
+         char *s = string_stash(&char_stream[pos+2], len);
+         tok_array[num_tkn++] = (Token) { .kind = Tk_BaseHex, .val.str = s, .line_num = line_num };
+         pos += len+2;
+      }
+      else if( char_stream[pos] == '\'' && char_stream[pos+1] == 'd' ) {
+         if (pos + 2 >= size) { printf("Expected dec literal, got EOF\n"); exit(3); }
+         int len = take_while(isdec, &char_stream[pos+2]);
+         char *s = string_stash(&char_stream[pos+2], len);
+         tok_array[num_tkn++] = (Token) { .kind = Tk_BaseDec, .val.str = s, .line_num = line_num };
+         pos += len+2;
+      }
+      else if( char_stream[pos] == '\'' && char_stream[pos+1] == 'o' ) {
+         if (pos + 2 >= size) { printf("Expected oct literal, got EOF\n"); exit(3); }
+         int len = take_while(isoct, &char_stream[pos+2]);
+         char *s = string_stash(&char_stream[pos+2], len);
+         tok_array[num_tkn++] = (Token) { .kind = Tk_BaseOct, .val.str = s, .line_num = line_num };
+         pos += len+2;
+      }
+      else if( char_stream[pos] == '\'' && char_stream[pos+1] == 'b' ) {
+         if (pos + 2 >= size) { printf("Expected bin literal, got EOF\n"); exit(3); }
+         int len = take_while(isbin, &char_stream[pos+2]);
+         char *s = string_stash(&char_stream[pos+2], len);
+         tok_array[num_tkn++] = (Token) { .kind = Tk_BaseBin, .val.str = s, .line_num = line_num };
+         pos += len+2;
+      }
       else if(char_stream[pos] == '/' && char_stream[pos+1] == '/')  { pos +=take_while(isnotnewline, &char_stream[pos]);      }
+      else if(char_stream[pos] == '.')  { tok_array[num_tkn++] = (Token) { .kind = Tk_Dot,      .line_num = line_num }; ++pos; }
       else if(char_stream[pos] == '+')  { tok_array[num_tkn++] = (Token) { .kind = Tk_Op_Plus,  .line_num = line_num }; ++pos; }
       else if(char_stream[pos] == '-')  { tok_array[num_tkn++] = (Token) { .kind = Tk_Op_Minus, .line_num = line_num }; ++pos; }
       else if(char_stream[pos] == '*')  { tok_array[num_tkn++] = (Token) { .kind = Tk_Op_Mul,   .line_num = line_num }; ++pos; }

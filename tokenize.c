@@ -7,6 +7,8 @@
 #define MAX_TMP_ALLOC  1024
 #define MAX_TOKENS     65536
 
+#define MODULE_MAX_IO  1024
+#define MODULE_MAX_ENTITIES 65536
 
 enum token_e { Tk_Null = 0, Tk_EOF, Tk_LParen, Tk_RParen, Tk_LBrace, Tk_RBrace, Tk_LBracket, Tk_RBracket, Tk_Ident, Tk_Literal, Tk_Semi, Tk_Colon, Tk_Comma, Tk_Hash, Tk_Dot,
                Tk_BaseHex, Tk_BaseDec, Tk_BaseOct, Tk_BaseBin, Tk_Op_Plus, Tk_Op_Minus, Tk_Op_Mul, Tk_Op_Div,
@@ -58,6 +60,13 @@ void pp_tokens(Token * tok_array, int num_tkn ) {
 }
 
 static int stash_allocated = 0;
+static int malloc_allocated = 0;
+
+void * my_malloc(size_t  size) {
+   malloc_allocated += size;
+   return malloc(size);
+}
+
 
 char * string_stash(char * src, int len)
 {
@@ -208,7 +217,7 @@ void tokenize_file (const char * filepath) {
    fseek(fp, 0, SEEK_END); long f_size = ftell(fp); rewind(fp);
    printf("File size: %ld bytes\n", f_size);
 
-   char * contents = malloc(f_size);
+   char * contents = my_malloc(f_size);
 
    fread(contents, 1, f_size, fp);
    fclose(fp);
@@ -244,10 +253,10 @@ struct module_def {
    char *name;
 
    int   num_io;
-   char **module_io;
+   char *module_io[MODULE_MAX_IO];
 
    int   num_entities;
-   struct module_entity **entities;
+   struct module_entity *entities[MODULE_MAX_ENTITIES];
 };
 
 Token * expect(Token * tok_array, enum token_e expectation) {
@@ -258,18 +267,53 @@ Token * expect(Token * tok_array, enum token_e expectation) {
    }
 }
 
-struct module_def * parse_module_def(Token * tk) {
-   struct module_def * md = malloc(sizeof(struct module_def));
 
+Token * parse_module_entity(Token * tk, struct module_entity * ent) {
+   switch(tk->kind) {
+      case Tk_Kw_wire:
+      case Tk_Kw_input:
+      case Tk_Kw_output:
+      case Tk_Kw_assign:
+      case Tk_Ident:
+      default: {printf("Expected wire|input|output|module_inst at line %d, but got '%s'\n", tk->line_num, tk_print[tk->kind]);}
+   }
+   return tk;
+}
+
+Token * parse_module_def(Token * tk, struct module_def * md) {
    expect(tk, Tk_Kw_module); tk++;
 
    expect(tk, Tk_Ident);
    md->name = tk->val.str; tk++;
+   md->num_io = 0;
+   md->num_entities = 0;
 
+   if(tk->kind == Tk_LParen) { //Possibly empty io list
+      tk++;
+      if(tk->kind != Tk_RParen) // Handle empty list
+         while(1) {
+            expect(tk, Tk_Ident);
+            md->module_io[md->num_io++] = tk->val.str; tk++;
+            if(md->num_io >= MODULE_MAX_IO) { printf("Too many module IO allocations in module %s\n", md->name); exit(3); }
+            if(tk->kind == Tk_Comma) tk++;
+            else break;
+         }
+      expect(tk, Tk_RParen); tk++;
+   }
    expect(tk, Tk_Semi); tk++;
+
+   while(tk->kind != Tk_Kw_endmodule || tk->kind == Tk_EOF) {
+      struct module_entity * new_entity = my_malloc(sizeof(struct module_entity));
+      tk = parse_module_entity(tk, new_entity);
+      md->entities[md->num_entities++] = new_entity;
+      if(md->num_entities >= MODULE_MAX_ENTITIES) { printf("Too many module entity allocations in module %s\n", md->name); exit(3);  }
+   }
+
+   if(tk->kind == Tk_EOF) { printf("Expected endmodule, but got EOF!\n"); exit(2); }
+
    expect(tk, Tk_Kw_endmodule);
 
-   return md;
+   return tk;
 }
 
 
@@ -279,8 +323,11 @@ int main(int ac, char **av) {
    for (char **q = av; *q != NULL; ++q) printf(">> %s\n", *q);
 
    tokenize_file(av[1]);
-   printf("\nAllocated %d bytes for string stash\n\n", stash_allocated);
 
-   parse_module_def(tok_array);
+   struct module_def * md = my_malloc(sizeof(struct module_def));
+   parse_module_def(tok_array, md);
+
+   printf("\nAllocated %d bytes for string stash and %d bytes for parse structures\n\n", stash_allocated, malloc_allocated);
+
 
 }

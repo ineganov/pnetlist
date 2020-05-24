@@ -31,6 +31,35 @@ typedef struct token_s {
 
 struct token_s tok_array[MAX_TOKENS];
 
+
+struct Wire_Decl {
+   char *name;
+   int hi, lo;
+   int is_bus;
+};
+
+struct Mod_Inst {
+   char *name;
+   char **params;
+   char **conns;
+};
+
+struct Module_Entity {
+   enum   { M_Ent_Inst, M_Ent_Wire, M_Ent_Input, M_Ent_Output } kind;
+   union  { struct Mod_Inst  mod_inst;
+            struct Wire_Decl wire_decl;
+            struct Wire_Decl input_decl;
+            struct Wire_Decl output_decl; } ent;
+   struct Module_Entity * next;
+};
+
+struct module_def {
+   char * name;
+   struct IO_Port {char * name; struct IO_Port * next; } * io_ports;
+   struct Module_Entity *entities;
+};
+
+
 void pp_tokens(Token * tok_array, int num_tkn ) {
 
    int line_num = 0;
@@ -56,6 +85,15 @@ void pp_tokens(Token * tok_array, int num_tkn ) {
          printf(" %s ", tk_print[tok_array[i].kind] );
    }
    printf("\n");
+   return;
+}
+
+void pp_module(struct module_def * md) {
+   printf("Module %s:\n", md->name);
+
+   for(struct IO_Port * iter = md->io_ports; iter != NULL; iter = iter->next ) printf("  io port: %s\n", iter->name);
+   for(struct Module_Entity * iter = md->entities; iter != NULL; iter = iter->next ) printf("entity: %d\n", iter->kind );
+
    return;
 }
 
@@ -229,35 +267,6 @@ void tokenize_file (const char * filepath) {
    return;
 }
 
-struct Wire_Decl {
-   char *name;
-   int hi, lo;
-   int is_bus;
-};
-
-struct Mod_Inst {
-   char *name;
-   char **params;
-   char **conns;
-};
-
-struct module_entity {
-   enum   { M_Ent_Inst, M_Ent_Wire, M_Ent_Input, M_Ent_Output } kind;
-   union  { struct Mod_Inst  mod_inst;
-            struct Wire_Decl wire_decl;
-            struct Wire_Decl input_decl;
-            struct Wire_Decl output_decl; } ent;
-};
-
-struct module_def {
-   char *name;
-
-   int   num_io;
-   char *module_io[MODULE_MAX_IO];
-
-   int   num_entities;
-   struct module_entity *entities[MODULE_MAX_ENTITIES];
-};
 
 Token * expect(Token * tok_array, enum token_e expectation) {
    if( tok_array->kind == expectation) { return ++tok_array; }
@@ -268,7 +277,7 @@ Token * expect(Token * tok_array, enum token_e expectation) {
 }
 
 
-Token * parse_module_entity(Token * tk, struct module_entity * ent) {
+Token * parse_module_entity(Token * tk, struct Module_Entity * ent) {
    switch(tk->kind) {
       case Tk_Kw_wire:
       case Tk_Kw_input:
@@ -285,16 +294,19 @@ Token * parse_module_def(Token * tk, struct module_def * md) {
 
    expect(tk, Tk_Ident);
    md->name = tk->val.str; tk++;
-   md->num_io = 0;
-   md->num_entities = 0;
+   md->io_ports = NULL;
+   md->entities = NULL;
 
    if(tk->kind == Tk_LParen) { //Possibly empty io list
       tk++;
       if(tk->kind != Tk_RParen) // Handle empty list
          while(1) {
             expect(tk, Tk_Ident);
-            md->module_io[md->num_io++] = tk->val.str; tk++;
-            if(md->num_io >= MODULE_MAX_IO) { printf("Too many module IO allocations in module %s\n", md->name); exit(3); }
+            struct IO_Port * new_port = my_malloc(sizeof(struct IO_Port));
+            new_port->name = tk->val.str;
+            new_port->next = md->io_ports;
+            md->io_ports = new_port;
+            tk++;
             if(tk->kind == Tk_Comma) tk++;
             else break;
          }
@@ -303,10 +315,10 @@ Token * parse_module_def(Token * tk, struct module_def * md) {
    expect(tk, Tk_Semi); tk++;
 
    while(tk->kind != Tk_Kw_endmodule || tk->kind == Tk_EOF) {
-      struct module_entity * new_entity = my_malloc(sizeof(struct module_entity));
+      struct Module_Entity * new_entity = my_malloc(sizeof(struct Module_Entity));
       tk = parse_module_entity(tk, new_entity);
-      md->entities[md->num_entities++] = new_entity;
-      if(md->num_entities >= MODULE_MAX_ENTITIES) { printf("Too many module entity allocations in module %s\n", md->name); exit(3);  }
+      new_entity->next = md->entities;
+      md->entities = new_entity;
    }
 
    if(tk->kind == Tk_EOF) { printf("Expected endmodule, but got EOF!\n"); exit(2); }
@@ -326,6 +338,7 @@ int main(int ac, char **av) {
 
    struct module_def * md = my_malloc(sizeof(struct module_def));
    parse_module_def(tok_array, md);
+   pp_module(md);
 
    printf("\nAllocated %d bytes for string stash and %d bytes for parse structures\n\n", stash_allocated, malloc_allocated);
 

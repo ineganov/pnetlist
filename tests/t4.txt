@@ -1,4 +1,9 @@
 module blah(a, b, c);
 
+input a;
+output b;
+output c;
+
+wire [7:0] q;
 
 endmodule

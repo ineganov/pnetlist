@@ -32,33 +32,40 @@ typedef struct token_s {
 struct token_s tok_array[MAX_TOKENS];
 
 
+struct Expr {
+   enum Expr_Kind { Expr_Literal, Expr_Ident, Expr_Idx, Expr_Concat } kind;
+   union { char * ident;
+           struct Literal { int width; char * lit; } literal;
+           struct Idx { char * name; int idx; } idx;
+           char ** concat_idents;
+   } expr; 
+};
+
 struct Wire_Decl {
    char *name;
    int hi, lo;
    int is_bus;
 };
 
-struct Mod_Inst {
+struct Module_Inst {
+   char *type;
    char *name;
-   char **params;
-   char **conns;
+   struct Bind {char * name; struct Expr * expr; struct Bind * next;} * params;
+   struct Bind * conns;
 };
 
 struct Module_Entity {
    enum   { M_Ent_Inst, M_Ent_Wire, M_Ent_Input, M_Ent_Output } kind;
-   union  { struct Mod_Inst  mod_inst;
-            struct Wire_Decl wire_decl;
-            struct Wire_Decl input_decl;
-            struct Wire_Decl output_decl; } ent;
+   union  { struct Module_Inst  mod_inst;
+            struct Wire_Decl wire_decl; } ent;
    struct Module_Entity * next;
 };
 
-struct module_def {
+struct Module_Def {
    char * name;
    struct IO_Port {char * name; struct IO_Port * next; } * io_ports;
    struct Module_Entity *entities;
 };
-
 
 void pp_tokens(Token * tok_array, int num_tkn ) {
 
@@ -88,7 +95,7 @@ void pp_tokens(Token * tok_array, int num_tkn ) {
    return;
 }
 
-void pp_module(struct module_def * md) {
+void pp_module(struct Module_Def * md) {
    printf("Module %s:\n", md->name);
 
    for(struct IO_Port * iter = md->io_ports; iter != NULL; iter = iter->next ) printf("  io port: %s\n", iter->name);
@@ -276,20 +283,146 @@ Token * expect(Token * tok_array, enum token_e expectation) {
    }
 }
 
+Token * parse_wire_decl(Token * tk, struct Wire_Decl * nw) {
+   tk++; // Assumes wire|input|output|inout is checked for one level above
+   if(tk->kind == Tk_LBracket) {
+      tk++;
+      expect(tk, Tk_Literal);  nw->hi = tk->val.val; tk++;
+      expect(tk, Tk_Colon);    tk++;
+      expect(tk, Tk_Literal);  nw->lo = tk->val.val; tk++;
+      expect(tk, Tk_RBracket); tk++;
+      nw->is_bus = 1;
+   } else nw->hi = nw->lo = nw->is_bus = 0;
+   expect(tk, Tk_Ident);
+   nw->name = tk->val.str; tk++;
+   expect(tk, Tk_Semi); tk++;
+   return tk;
+}
 
-Token * parse_module_entity(Token * tk, struct Module_Entity * ent) {
+Token * parse_expr(Token * tk, struct Expr * e) {
+   /*
+   struct Expr {
+   enum Expr_Kind { Expr_Literal, Expr_Ident, Expr_Idx, Expr_Concat } kind;
+   union { char * ident;
+           struct Literal { int width; char * lit; } literal;
+           struct Idx { char * name; int idx; } idx;
+           char ** concat_idents;
+   } expr; */
+
    switch(tk->kind) {
-      case Tk_Kw_wire:
-      case Tk_Kw_input:
-      case Tk_Kw_output:
-      case Tk_Kw_assign:
       case Tk_Ident:
-      default: {printf("Expected wire|input|output|module_inst at line %d, but got '%s'\n", tk->line_num, tk_print[tk->kind]);}
+         e->kind = Expr_Ident;
+         e->expr.ident = tk->val.str;
+         tk++;
+         break;
+      case Tk_Literal:
+         e->kind = Expr_Literal;
+         struct Literal * lit = my_malloc(sizeof(struct Literal));
+         if( (tk+1)->kind == Tk_BaseHex || 
+             (tk+1)->kind == Tk_BaseDec || 
+             (tk+1)->kind == Tk_BaseOct ||
+             (tk+1)->kind == Tk_BaseBin ) {
+            lit->width = tk->val.val; tk++;
+            lit->lit   = tk->val.str; tk++;
+         } else {
+            lit->width = 32;
+            char * lit_str = my_malloc(12);
+            sprintf(lit_str, "%d", tk->val.val);
+            lit->lit   = lit_str; tk++;
+         }
+         break;
+      case Tk_LBrace:
+      default: printf("Expected literal|ident|lbrace at line %d, but got: %s\n", tk->line_num, tk_print[tk->kind]);
    }
    return tk;
 }
 
-Token * parse_module_def(Token * tk, struct module_def * md) {
+Token * parse_module_inst(Token * tk, struct Module_Inst * mi) {
+   // token is 'ident' here
+   mi->type = tk->val.str; tk++;
+   mi->params = NULL;
+   mi->conns = NULL;
+
+   if(tk->kind == Tk_Hash) {
+      tk++;
+      expect(tk, Tk_LParen); tk++;
+      
+      while(tk->kind != Tk_RParen) {
+         struct Bind * new_bind = my_malloc(sizeof(struct Bind));
+         struct Expr * new_expr = my_malloc(sizeof(struct Expr));
+
+         expect(tk, Tk_Dot);    tk++;
+         expect(tk, Tk_Ident);
+         new_bind->name = tk->val.str; tk++;
+
+         expect(tk, Tk_LParen); tk++;
+         tk = parse_expr(tk, new_expr);
+         new_bind->expr = new_expr;
+         new_bind->next = mi->params;
+         mi->params = new_bind;
+         expect(tk, Tk_RParen); tk++;
+
+         if(tk->kind == Tk_Comma) tk++; else break;
+      }
+      expect(tk, Tk_RParen); tk++;
+   }
+
+   expect(tk, Tk_Ident);
+   mi->name = tk->val.str; tk++;
+
+   expect(tk, Tk_LParen); tk++;
+
+   while(tk->kind != Tk_RParen) {
+      struct Bind * new_bind = my_malloc(sizeof(struct Bind));
+      struct Expr * new_expr = my_malloc(sizeof(struct Expr));
+
+      expect(tk, Tk_Dot); tk++;
+      expect(tk, Tk_Ident);
+      new_bind->name = tk->val.str; tk++;
+
+      expect(tk, Tk_LParen); tk++;
+      tk = parse_expr(tk, new_expr);
+      new_bind->expr = new_expr;
+      new_bind->next = mi->conns;
+      mi->conns = new_bind;
+      expect(tk, Tk_RParen); tk++;
+
+      if(tk->kind == Tk_Comma) tk++; else break;
+   }
+
+   expect(tk, Tk_RParen); tk++;
+   expect(tk, Tk_Semi); tk++;
+   return tk;
+}
+
+Token * parse_module_entity(Token * tk, struct Module_Entity * e) {
+   switch(tk->kind) {
+      case Tk_Kw_wire:
+         e->kind = M_Ent_Wire;
+         tk = parse_wire_decl(tk, &e->ent.wire_decl);
+         break;
+      case Tk_Kw_input:
+         e->kind = M_Ent_Input;
+         tk = parse_wire_decl(tk, &e->ent.wire_decl);
+         break;
+      case Tk_Kw_output:
+         e->kind = M_Ent_Output;
+         tk = parse_wire_decl(tk, &e->ent.wire_decl);
+         break;
+      case Tk_Kw_assign:
+         printf("assign statement not implemented! (line %d)\n", tk->line_num);
+         exit(3);
+         break;
+      case Tk_Ident:
+         e->kind = M_Ent_Inst;
+         tk = parse_module_inst(tk, &e->ent.mod_inst);
+         break;
+      default: {printf("Expected wire|input|output|module_inst at line %d, but got '%s'\n", tk->line_num, tk_print[tk->kind]); exit(3); }
+   }
+   return tk;
+}
+
+Token * parse_module_def(Token * tk, struct Module_Def * md) {
    expect(tk, Tk_Kw_module); tk++;
 
    expect(tk, Tk_Ident);
@@ -336,7 +469,7 @@ int main(int ac, char **av) {
 
    tokenize_file(av[1]);
 
-   struct module_def * md = my_malloc(sizeof(struct module_def));
+   struct Module_Def * md = my_malloc(sizeof(struct Module_Def));
    parse_module_def(tok_array, md);
    pp_module(md);
 

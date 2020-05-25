@@ -7,8 +7,7 @@
 #define MAX_TMP_ALLOC  1024
 #define MAX_TOKENS     65536
 
-#define MODULE_MAX_IO  1024
-#define MODULE_MAX_ENTITIES 65536
+#define MAX_CONCAT     32
 
 enum token_e { Tk_Null = 0, Tk_EOF, Tk_LParen, Tk_RParen, Tk_LBrace, Tk_RBrace, Tk_LBracket, Tk_RBracket, Tk_Ident, Tk_Literal, Tk_Semi, Tk_Colon, Tk_Comma, Tk_Hash, Tk_Dot,
                Tk_BaseHex, Tk_BaseDec, Tk_BaseOct, Tk_BaseBin, Tk_Op_Plus, Tk_Op_Minus, Tk_Op_Mul, Tk_Op_Div,
@@ -35,8 +34,8 @@ struct token_s tok_array[MAX_TOKENS];
 struct Expr {
    enum Expr_Kind { Expr_Literal, Expr_Ident, Expr_Idx, Expr_Concat } kind;
    union { char * ident;
-           struct Literal { int width; char * lit; } literal;
-           struct Idx { char * name; int idx; } idx;
+           struct Literal { int width; char * lit; } * literal;
+           struct Idx { char * name; int idx; } * idx;
            char ** concat_idents;
    } expr; 
 };
@@ -300,14 +299,6 @@ Token * parse_wire_decl(Token * tk, struct Wire_Decl * nw) {
 }
 
 Token * parse_expr(Token * tk, struct Expr * e) {
-   /*
-   struct Expr {
-   enum Expr_Kind { Expr_Literal, Expr_Ident, Expr_Idx, Expr_Concat } kind;
-   union { char * ident;
-           struct Literal { int width; char * lit; } literal;
-           struct Idx { char * name; int idx; } idx;
-           char ** concat_idents;
-   } expr; */
 
    switch(tk->kind) {
       case Tk_Ident:
@@ -330,8 +321,24 @@ Token * parse_expr(Token * tk, struct Expr * e) {
             sprintf(lit_str, "%d", tk->val.val);
             lit->lit   = lit_str; tk++;
          }
+         e->expr.literal = lit;
          break;
       case Tk_LBrace:
+         e->kind = Expr_Concat;
+         tk++;
+         char ** concat_lst = my_malloc(MAX_CONCAT*sizeof(char *));
+         e->expr.concat_idents = concat_lst;
+
+         while(tk->kind != Tk_RBrace) {
+            expect(tk, Tk_Ident);
+            *concat_lst++ = tk->val.str; tk++;
+            if(tk->kind != Tk_Comma) break;
+            else tk++;
+         }
+         *concat_lst = NULL;
+         expect(tk, Tk_RBrace); tk++;
+         break;
+
       default: printf("Expected literal|ident|lbrace at line %d, but got: %s\n", tk->line_num, tk_print[tk->kind]);
    }
    return tk;

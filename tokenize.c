@@ -94,11 +94,38 @@ void pp_tokens(Token * tok_array, int num_tkn ) {
    return;
 }
 
+void pp_expr(struct Expr * e) {
+   switch(e->kind) {
+      case Expr_Ident:   printf("%s", e->expr.ident); break;
+      case Expr_Literal: printf("%d'%s",  e->expr.literal->width, e->expr.literal->lit); break;
+      case Expr_Idx:     printf("%s[%d]", e->expr.idx->name, e->expr.idx->idx ); break;
+      case Expr_Concat:  printf("{");
+                         for(char ** iter = e->expr.concat_idents; *iter != NULL; iter++) printf("%s ", *iter);
+                         printf("}");
+                         break;
+   }
+   return;
+}
+
+void pp_mod_entity(struct Module_Entity * me) {
+   switch(me->kind){
+      case M_Ent_Inst:  printf(" <instance> %s/%s (", me->ent.mod_inst.type, me->ent.mod_inst.name);
+                        for(struct Bind * conn = me->ent.mod_inst.conns; conn != NULL; conn = conn->next )
+                           {printf(" .%s->", conn->name); pp_expr(conn->expr);} // conn->expr->kind == Expr_Ident ? conn->expr->expr.ident : "expr");
+                        printf(")\n");
+                        break;
+      case M_Ent_Input:  printf(" <input: %2d>  %s\n", me->ent.wire_decl.hi - me->ent.wire_decl.lo + 1, me->ent.wire_decl.name); break;
+      case M_Ent_Output: printf(" <output:%2d>  %s\n", me->ent.wire_decl.hi - me->ent.wire_decl.lo + 1, me->ent.wire_decl.name); break;
+      case M_Ent_Wire:   printf(" <wire:  %2d>  %s\n", me->ent.wire_decl.hi - me->ent.wire_decl.lo + 1, me->ent.wire_decl.name); break;
+   }
+   return;
+}
+
 void pp_module(struct Module_Def * md) {
    printf("Module %s:\n", md->name);
 
    for(struct IO_Port * iter = md->io_ports; iter != NULL; iter = iter->next ) printf("  io port: %s\n", iter->name);
-   for(struct Module_Entity * iter = md->entities; iter != NULL; iter = iter->next ) printf("entity: %d\n", iter->kind );
+   for(struct Module_Entity * iter = md->entities; iter != NULL; iter = iter->next ) pp_mod_entity(iter);
 
    return;
 }
@@ -190,7 +217,7 @@ int tokenize(char * char_stream, long size, struct token_s tok_array[]) {
       }
       else if(char_stream[pos] == '\\') {
          int len = take_while(isnotspace, &char_stream[pos]);
-         char *s = string_stash(&char_stream[pos+1], len); // Drop the slash itself
+         char *s = string_stash(&char_stream[pos+1], len-1); // Drop the slash itself
          tok_array[num_tkn++] = (Token) { .kind = Tk_Ident, .val.str = s, .line_num = line_num };
          pos += len+1; //Final space needs to be eaten
       }

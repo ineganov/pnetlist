@@ -302,9 +302,21 @@ Token * parse_expr(Token * tk, struct Expr * e) {
 
    switch(tk->kind) {
       case Tk_Ident:
-         e->kind = Expr_Ident;
-         e->expr.ident = tk->val.str;
-         tk++;
+         if( (tk+1)->kind == Tk_LBracket) {
+            struct Idx * new_idx = my_malloc(sizeof(struct Idx));
+            e->kind = Expr_Idx;
+            new_idx->name = tk->val.str; tk++;
+            expect(tk, Tk_LBracket); tk++;
+            expect(tk, Tk_Literal);
+            new_idx->idx = tk->val.val; tk++;
+            expect(tk, Tk_RBracket); tk++;
+            e->expr.idx = new_idx;
+            break;
+         } else {
+            e->kind = Expr_Ident;
+            e->expr.ident = tk->val.str;
+            tk++;
+         }
          break;
       case Tk_Literal:
          e->kind = Expr_Literal;

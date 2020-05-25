@@ -107,6 +107,23 @@ void pp_expr(struct Expr * e) {
    return;
 }
 
+struct Module_Entity * reverse_mod_entity(struct Module_Entity * me)
+{
+   struct Module_Entity * tmp;
+   struct Module_Entity * prev = me;
+   struct Module_Entity * iter = me->next;
+   me->next = NULL;
+
+   while(iter != NULL) {
+      tmp  = iter->next;
+      iter->next = prev;
+      prev = iter;
+      iter = tmp;
+   }
+
+   return prev;
+}
+
 void pp_mod_entity(struct Module_Entity * me) {
    switch(me->kind){
       case M_Ent_Inst:  printf(" <instance> %s/%s (", me->ent.mod_inst.type, me->ent.mod_inst.name);
@@ -503,6 +520,8 @@ Token * parse_module_def(Token * tk, struct Module_Def * md) {
    if(tk->kind == Tk_EOF) { printf("Expected endmodule, but got EOF!\n"); exit(2); }
 
    expect(tk, Tk_Kw_endmodule);
+
+   md->entities = reverse_mod_entity(md->entities);
 
    return tk;
 }

@@ -107,8 +107,9 @@ void pp_expr(struct Expr * e) {
    return;
 }
 
-struct Module_Entity * reverse_mod_entity(struct Module_Entity * me)
-{
+struct Module_Entity * reverse_mod_entity(struct Module_Entity * me) {
+   if(me == NULL) return me;
+
    struct Module_Entity * tmp;
    struct Module_Entity * prev = me;
    struct Module_Entity * iter = me->next;
@@ -540,5 +541,5 @@ int main(int ac, char **av) {
 
    printf("\nAllocated %d bytes for string stash and %d bytes for parse structures\n\n", stash_allocated, malloc_allocated);
 
-
+   return 0;
 }

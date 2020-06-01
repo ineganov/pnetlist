@@ -527,6 +527,38 @@ Token * parse_module_def(Token * tk, struct Module_Def * md) {
    return tk;
 }
 
+int comp_func(const void *a, const void *b) { return strcmp(*(char **)a, *(char **)b); }
+
+char ** unique_modules(struct Module_Def * md) {
+   char ** modules;
+   int num_modules = 0;
+
+   for( struct Module_Entity * iter = md->entities; iter != NULL; iter = iter->next)
+      if(iter -> kind == M_Ent_Inst) num_modules++;
+
+   modules = malloc((num_modules + 1) * sizeof(char *));
+   modules[num_modules] = NULL;
+
+   int i = 0;
+   for( struct Module_Entity * iter = md->entities; iter != NULL; iter = iter->next)
+      if(iter -> kind == M_Ent_Inst) {
+         modules[i++] = iter->ent.mod_inst.type;
+      }
+
+   qsort(modules, num_modules, sizeof(char *), comp_func);
+
+   int last_uniq = 0;
+   int uniq_iter = 0;
+   for(int i = 1; i < num_modules; ++i)
+      if(strcmp(modules[last_uniq], modules[i])) { // if not equal
+         last_uniq = i;
+         modules[++uniq_iter] = modules[i];
+      }
+
+   modules[++uniq_iter] = NULL;
+
+   return modules;
+}
 
 int main(int ac, char **av) {
    printf("int: %lu, long: %lu, struct: %lu, enum: %lu\n", sizeof(int), sizeof(long), sizeof(struct token_s), sizeof(enum token_e) );
@@ -538,6 +570,10 @@ int main(int ac, char **av) {
    struct Module_Def * md = my_malloc(sizeof(struct Module_Def));
    parse_module_def(tok_array, md);
    pp_module(md);
+
+   char ** mod_list = unique_modules(md);
+
+   while(*mod_list) {printf("%s\n", *mod_list++);}
 
    printf("\nAllocated %d bytes for string stash and %d bytes for parse structures\n\n", stash_allocated, malloc_allocated);
 

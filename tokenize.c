@@ -527,22 +527,28 @@ Token * parse_module_def(Token * tk, struct Module_Def * md) {
    return tk;
 }
 
-int comp_func(const void *a, const void *b) { return strcmp(*(char **)a, *(char **)b); }
+struct mod_count {char * nm; int cnt;};
 
-char ** unique_modules(struct Module_Def * md) {
-   char ** modules;
+int comp_func(const void *a, const void *b) { return strcmp( (*(struct mod_count **)a)->nm,
+                                                             (*(struct mod_count **)b)->nm ); }
+
+struct mod_count ** unique_modules(struct Module_Def * md) {
+   struct mod_count ** modules;
    int num_modules = 0;
 
    for( struct Module_Entity * iter = md->entities; iter != NULL; iter = iter->next)
       if(iter -> kind == M_Ent_Inst) num_modules++;
 
-   modules = malloc((num_modules + 1) * sizeof(char *));
+   modules = my_malloc((num_modules + 1) * sizeof(struct mod_count *));
    modules[num_modules] = NULL;
 
    int i = 0;
    for( struct Module_Entity * iter = md->entities; iter != NULL; iter = iter->next)
       if(iter -> kind == M_Ent_Inst) {
-         modules[i++] = iter->ent.mod_inst.type;
+         modules[i] = my_malloc(sizeof(struct mod_count));
+         modules[i]->nm  = iter->ent.mod_inst.type;
+         modules[i]->cnt = 1;
+         i++;
       }
 
    qsort(modules, num_modules, sizeof(char *), comp_func);
@@ -550,10 +556,11 @@ char ** unique_modules(struct Module_Def * md) {
    int last_uniq = 0;
    int uniq_iter = 0;
    for(int i = 1; i < num_modules; ++i)
-      if(strcmp(modules[last_uniq], modules[i])) { // if not equal
+      if(strcmp(modules[last_uniq]->nm, modules[i]->nm)) { // if not equal
          last_uniq = i;
          modules[++uniq_iter] = modules[i];
       }
+      else modules[last_uniq]->cnt += 1;
 
    modules[++uniq_iter] = NULL;
 
@@ -571,9 +578,10 @@ int main(int ac, char **av) {
    parse_module_def(tok_array, md);
    pp_module(md);
 
-   char ** mod_list = unique_modules(md);
+   struct mod_count ** mod_list = unique_modules(md);
 
-   while(*mod_list) {printf("%s\n", *mod_list++);}
+   printf("\nModule inst statistics:\n");
+   while(*mod_list) {printf("%50s %-4d\n", (*mod_list)->nm, (*mod_list)->cnt ); mod_list++;}
 
    printf("\nAllocated %d bytes for string stash and %d bytes for parse structures\n\n", stash_allocated, malloc_allocated);
 

@@ -8,11 +8,11 @@
 
 #define MAX_CONCAT     128
 
-enum token_e { Tk_Null = 0, Tk_EOF, Tk_LParen, Tk_RParen, Tk_LBrace, Tk_RBrace, Tk_LBracket, Tk_RBracket, Tk_Ident, Tk_Literal, Tk_Semi, Tk_Colon, Tk_Comma, Tk_Hash, Tk_Dot,
+enum token_e { Tk_Null = 0, Tk_EOF, Tk_LParen, Tk_RParen, Tk_LBrace, Tk_RBrace, Tk_LBracket, Tk_RBracket, Tk_Ident, Tk_Literal, Tk_String, Tk_Semi, Tk_Colon, Tk_Comma, Tk_Hash, Tk_Dot,
                Tk_BaseHex, Tk_BaseDec, Tk_BaseOct, Tk_BaseBin, Tk_Op_Plus, Tk_Op_Minus, Tk_Op_Mul, Tk_Op_Div,
                Tk_Kw_assign, Tk_Kw_begin, Tk_Kw_end, Tk_Kw_endmodule, Tk_Kw_inout, Tk_Kw_input, Tk_Kw_module, Tk_Kw_output, Tk_Kw_reg, Tk_Kw_wire };
 
-char * tk_print[] = { "Tk_Null", "Tk_EOF", "(", ")", "{", "}", "[", "]", "Tk_Ident", "Tk_Literal", ";", ":", ",", "#", ".",
+char * tk_print[] = { "Tk_Null", "Tk_EOF", "(", ")", "{", "}", "[", "]", "Tk_Ident", "Tk_Literal", "Tk_String", ";", ":", ",", "#", ".",
                       "Tk_BaseHex", "Tk_BaseDec", "Tk_BaseOct", "Tk_BaseBin", "+", "-", "*", "/", "assign", "begin", "end", "endmodule", "inout", "input", "module", "output", "reg", "wire" };
 
 union val_u {
@@ -251,6 +251,8 @@ int ishex       (int c) { return c == '_' || c == 'x' || c == 'z' || c == 'X' ||
 int isdec       (int c) { return c == '_' || c == 'x' || c == 'z' || c == 'X' || c == 'Z' || isnumber(c); }
 int isoct       (int c) { return c == '_' || c == 'x' || c == 'z' || c == 'X' || c == 'Z' || (c >= '0' && c <= '7'); }
 int isbin       (int c) { return c == '_' || c == 'x' || c == 'z' || c == 'X' || c == 'Z' || c == '0' || c == '1';  }
+int isnotstarparen (int c) { return c != ')'; } //FIXME: star-paren, not just paren!
+int isnotquote  (int c) { return c != '"'; }
 
 Token * tok_append(Token * last_token, Token * new_tkn ) {
    last_token->next = my_malloc(sizeof(Token));
@@ -271,6 +273,12 @@ Token * tokenize(char * char_stream, long size) {
          char *s = string_stash(&char_stream[pos], len); // no need to stash keywords, just more convenient to compare with KWs
          last_token = tok_append(last_token, & (Token) { .kind = is_keyword(s), .val.str = s, .line_num = line_num, .next = NULL });
          pos += len;
+      }
+      else if(char_stream[pos] == '"' ) {
+         int len = take_while(isnotquote, &char_stream[pos+1]);
+         char * s = string_stash(&char_stream[pos+1], len);
+         last_token = tok_append(last_token, & (Token) { .kind = Tk_String, .val.str = s, .line_num = line_num, .next = NULL });
+         pos += len+2; //Eat the end quote, recall we started with a +1
       }
       else if(char_stream[pos] == '\\') {
          int len = take_while(isnotspace, &char_stream[pos]);
@@ -312,7 +320,9 @@ Token * tokenize(char * char_stream, long size) {
          last_token = tok_append(last_token, & (Token) { .kind = Tk_BaseBin, .val.str = s, .line_num = line_num, .next = NULL });
          pos += len+2;
       }
-      else if(char_stream[pos] == '/' && char_stream[pos+1] == '/')  { pos +=take_while(isnotnewline, &char_stream[pos]);      }
+      else if(char_stream[pos] == '/' && char_stream[pos+1] == '/')  { pos +=take_while(isnotnewline, &char_stream[pos]); }
+      else if(char_stream[pos] == '(' && char_stream[pos+1] == '*')  { pos +=take_while(isnotstarparen, &char_stream[pos])+1; }
+      else if(char_stream[pos] == '`')  { pos +=take_while(isnotnewline, &char_stream[pos]); }
       else if(char_stream[pos] == '.')  { last_token = tok_append(last_token, & (Token) { .kind = Tk_Dot,      .line_num = line_num, .next = NULL }); ++pos; }
       else if(char_stream[pos] == '+')  { last_token = tok_append(last_token, & (Token) { .kind = Tk_Op_Plus,  .line_num = line_num, .next = NULL }); ++pos; }
       else if(char_stream[pos] == '-')  { last_token = tok_append(last_token, & (Token) { .kind = Tk_Op_Minus, .line_num = line_num, .next = NULL }); ++pos; }
@@ -351,7 +361,7 @@ Token * tokenize_file (const char * filepath) {
    fclose(fp);
 
    Token * tok_list = tokenize(contents, f_size);
-   pp_tokens(tok_list);
+   //pp_tokens(tok_list);
 
    free(contents);
    return tok_list;

@@ -27,10 +27,11 @@ typedef struct token_s {
 
 struct Expr {
    struct Expr * next;
-   enum Expr_Kind { Expr_Literal, Expr_Ident, Expr_Idx, Expr_Concat } kind;
+   enum Expr_Kind { Expr_Literal, Expr_Ident, Expr_Idx, Expr_Range, Expr_Concat } kind;
    union { char * ident;
            struct Literal { int width; char * lit; } * literal;
            struct Idx { char * name; int idx; } * idx;
+           struct Range { char * name; int hi; int lo; } * range;
            struct Expr * concat;
    } expr; 
 };
@@ -88,6 +89,7 @@ void pp_expr(struct Expr * e) {
       case Expr_Ident:   printf("%s", e->expr.ident); break;
       case Expr_Literal: printf("%d'%s",  e->expr.literal->width, e->expr.literal->lit); break;
       case Expr_Idx:     printf("%s[%d]", e->expr.idx->name, e->expr.idx->idx ); break;
+      case Expr_Range:   printf("%s[%d:%d]", e->expr.range->name, e->expr.range->hi, e->expr.range->lo );
       case Expr_Concat:  printf("{");
                          for(struct Expr * iter = e->expr.concat; iter != NULL; iter = iter->next) {
                            pp_expr(iter);
@@ -396,8 +398,8 @@ Token * parse_wire_decl(Token * tk, struct Wire_Decl * nw) {
 Token * parse_expr(Token * tk, struct Expr * e) {
 
    switch(tk->kind) {
-      case Tk_Ident:
-         if( tk->next->kind == Tk_LBracket) {
+      case Tk_Ident: // FIXME: lookahead of 3 is unnecessary, dangerous and plain wrong
+         if( tk->next->kind == Tk_LBracket && tk->next->next->next->kind == Tk_RBracket) {
             struct Idx * new_idx = my_malloc(sizeof(struct Idx));
             e->kind = Expr_Idx;
             new_idx->name = tk->val.str; tk = tk->next;
@@ -407,6 +409,18 @@ Token * parse_expr(Token * tk, struct Expr * e) {
             expect(tk, Tk_RBracket); tk = tk->next;
             e->expr.idx = new_idx;
             break;
+         }
+         else if( tk->next->kind == Tk_LBracket && tk->next->next->next->kind == Tk_Colon) {
+            struct Range * new_range = my_malloc(sizeof(struct Range));
+            e->kind = Expr_Range;
+            new_range->name = tk->val.str; tk = tk->next;
+            expect(tk, Tk_LBracket); tk = tk->next;
+            expect(tk, Tk_Literal);
+            new_range->hi = tk->val.val; tk = tk->next;
+            expect(tk, Tk_Colon); tk = tk->next;
+            new_range->lo = tk->val.val; tk = tk->next;
+            expect(tk, Tk_RBracket); tk = tk->next;
+            e->expr.range = new_range;
          } else {
             e->kind = Expr_Ident;
             e->expr.ident = tk->val.str;

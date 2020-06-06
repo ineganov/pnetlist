@@ -27,8 +27,9 @@ typedef struct token_s {
 
 struct Expr {
    struct Expr * next;
-   enum Expr_Kind { Expr_Literal, Expr_Ident, Expr_Idx, Expr_Range, Expr_Concat } kind;
+   enum Expr_Kind { Expr_Literal, Expr_Ident, Expr_Idx, Expr_Range, Expr_Concat, Expr_String } kind;
    union { char * ident;
+           char * string_lit;
            struct Literal { int width; char * lit; } * literal;
            struct Idx { char * name; int idx; } * idx;
            struct Range { char * name; int hi; int lo; } * range;
@@ -87,9 +88,10 @@ void pp_tokens(Token * tok_list) {
 void pp_expr(struct Expr * e) {
    switch(e->kind) {
       case Expr_Ident:   printf("%s", e->expr.ident); break;
+      case Expr_String:  printf("\"%s\"", e->expr.string_lit); break;
       case Expr_Literal: printf("%d'%s",  e->expr.literal->width, e->expr.literal->lit); break;
       case Expr_Idx:     printf("%s[%d]", e->expr.idx->name, e->expr.idx->idx ); break;
-      case Expr_Range:   printf("%s[%d:%d]", e->expr.range->name, e->expr.range->hi, e->expr.range->lo );
+      case Expr_Range:   printf("%s[%d:%d]", e->expr.range->name, e->expr.range->hi, e->expr.range->lo ); break;
       case Expr_Concat:  printf("{");
                          for(struct Expr * iter = e->expr.concat; iter != NULL; iter = iter->next) {
                            pp_expr(iter);
@@ -467,8 +469,13 @@ Token * parse_expr(Token * tk, struct Expr * e) {
 
          expect(tk, Tk_RBrace); tk = tk->next;
          break;
+      case Tk_String:
+         e->kind = Expr_String;
+         e->expr.string_lit = tk->val.str;
+         tk = tk->next;
+         break;
 
-      default: printf("Expected literal|ident|lbrace at line %d, but got: %s\n", tk->line_num, tk_print[tk->kind]);
+      default: printf("Expected literal|ident|lbrace|string at line %d, but got: %s\n", tk->line_num, tk_print[tk->kind]);
    }
    return tk;
 }

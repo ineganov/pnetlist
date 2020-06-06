@@ -4,9 +4,6 @@
 #include <string.h>
 
 #define MAX_IDENT_LENGTH  4096
-#define MAX_TOKENS     65536
-
-#define MAX_CONCAT     128
 
 enum token_e { Tk_Null = 0, Tk_EOF, Tk_LParen, Tk_RParen, Tk_LBrace, Tk_RBrace, Tk_LBracket, Tk_RBracket, Tk_Ident, Tk_Literal, Tk_String, Tk_Semi, Tk_Colon, Tk_Comma, Tk_Hash, Tk_Dot,
                Tk_BaseHex, Tk_BaseDec, Tk_BaseOct, Tk_BaseBin, Tk_Op_Plus, Tk_Op_Minus, Tk_Op_Mul, Tk_Op_Div,
@@ -29,11 +26,12 @@ typedef struct token_s {
 } Token;
 
 struct Expr {
+   struct Expr * next;
    enum Expr_Kind { Expr_Literal, Expr_Ident, Expr_Idx, Expr_Concat } kind;
    union { char * ident;
            struct Literal { int width; char * lit; } * literal;
            struct Idx { char * name; int idx; } * idx;
-           char ** concat_idents;
+           struct Expr * concat;
    } expr; 
 };
 
@@ -91,7 +89,10 @@ void pp_expr(struct Expr * e) {
       case Expr_Literal: printf("%d'%s",  e->expr.literal->width, e->expr.literal->lit); break;
       case Expr_Idx:     printf("%s[%d]", e->expr.idx->name, e->expr.idx->idx ); break;
       case Expr_Concat:  printf("{");
-                         for(char ** iter = e->expr.concat_idents; *iter != NULL; iter++) printf("%s ", *iter);
+                         for(struct Expr * iter = e->expr.concat; iter != NULL; iter = iter->next) {
+                           pp_expr(iter);
+                           if (iter->next) printf(", ");
+                         }
                          printf("}");
                          break;
    }
@@ -432,16 +433,24 @@ Token * parse_expr(Token * tk, struct Expr * e) {
       case Tk_LBrace:
          e->kind = Expr_Concat;
          tk = tk->next;
-         char ** concat_lst = my_malloc(MAX_CONCAT*sizeof(char *));
-         e->expr.concat_idents = concat_lst;
+
+         struct Expr * fst = my_malloc(sizeof(struct Expr));
+         struct Expr * lst = fst;
+         lst->next = NULL;
 
          while(tk->kind != Tk_RBrace) {
-            expect(tk, Tk_Ident);
-            *concat_lst++ = tk->val.str; tk = tk->next;
+            struct Expr * new_expr = my_malloc(sizeof(struct Expr));
+            tk = parse_expr(tk, new_expr);
+
+            lst -> next = new_expr;
+            lst = new_expr;
+
             if(tk->kind != Tk_Comma) break;
             else tk = tk->next;
          }
-         *concat_lst = NULL;
+
+         e->expr.concat = fst->next;
+
          expect(tk, Tk_RBrace); tk = tk->next;
          break;
 

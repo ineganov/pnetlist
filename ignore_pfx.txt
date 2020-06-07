@@ -1,0 +1,11 @@
+dff
+VCC
+GND
+LUT
+RAM
+MUX
+SRL
+bw_r
+FDRE
+FDSE
+CARRY

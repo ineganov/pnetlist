@@ -79,22 +79,20 @@ struct mod_count ** unique_modules(struct Module_Def * md) {
    return modules;
 }
 
-int is_not_leaf(char * mod_type) {
-   if(0 == strncmp("dff",   mod_type, 3)) return 0;
-   if(0 == strncmp("VCC",   mod_type, 3)) return 0;
-   if(0 == strncmp("GND",   mod_type, 3)) return 0;
-   if(0 == strncmp("LUT",   mod_type, 3)) return 0;
-   if(0 == strncmp("RAM",   mod_type, 3)) return 0;
-   if(0 == strncmp("MUX",   mod_type, 3)) return 0;
-   if(0 == strncmp("SRL",   mod_type, 3)) return 0;
-   if(0 == strncmp("bw_r",  mod_type, 4)) return 0;
-   if(0 == strncmp("FDRE",  mod_type, 4)) return 0;
-   if(0 == strncmp("FDSE",  mod_type, 4)) return 0;
-   if(0 == strncmp("CARRY", mod_type, 5)) return 0;
+int is_not_leaf(char * mod_type, char ** ignores) {
+
+   for(char ** iter = ignores; *iter != NULL; iter++) {
+      char * c = *iter;
+      char * m = mod_type;
+      while(1) {
+         if(*c++ != *m++) break; // next in the ignores list
+         if(*c == '\0') return 0; // got a match
+      }
+   }
    return 1;
 }
 
-void dump_dot(char * fname, struct Module_Def * md) {
+void dump_dot(char * fname, struct Module_Def * md, char ** ignores) {
    FILE * fd;
    fd = fopen(fname, "w");
 
@@ -102,7 +100,7 @@ void dump_dot(char * fname, struct Module_Def * md) {
    for(struct Module_Def * mi = md; mi != NULL; mi = mi->next) {
       struct mod_count ** mod_list = unique_modules(mi);
       for(; *mod_list != NULL; mod_list++ ) {
-         if(is_not_leaf((*mod_list)->nm)) fprintf(fd, "\t%s -> %s;\n", (*mod_list)->nm, mi->name);
+         if(is_not_leaf((*mod_list)->nm, ignores)) fprintf(fd, "\t%s -> %s;\n", (*mod_list)->nm, mi->name);
       }
    }
    fprintf(fd, "}\n" );
@@ -110,6 +108,37 @@ void dump_dot(char * fname, struct Module_Def * md) {
    fclose(fd);
 
    return;
+}
+
+char ** read_list(char * fname) {
+   static char * null_list[] = {NULL};
+
+   FILE * fd;
+   fd = fopen(fname, "r");
+   if(fd == NULL) return null_list;
+
+   int num_lines = 0;
+   for(char c = '\0'; c != EOF; c = fgetc(fd)) if(c == '\n') num_lines++;
+   rewind(fd);
+
+   char ** ret = my_malloc((num_lines + 1)*sizeof(char *));
+   ret[num_lines] = NULL;
+
+   int i = 0;
+
+   while(1) {
+      char  *line = NULL;
+      size_t linecap = 0;
+      int len = 0;
+      if((len = getline(&line, &linecap, fd)) > 0) {
+         ret[i] = line;
+         ret[i][len-1] = '\0';
+         i++;
+         }
+      else break;
+   }
+
+   return ret;
 }
 
 int main(int ac, char **av) {
@@ -122,7 +151,9 @@ int main(int ac, char **av) {
    struct Module_Def * md = parse_file(tok_list);
 
    pp_modules(md);
-   dump_dot("output.dot", md);
+
+   char ** ignores = read_list("ignore_pfx.txt");
+   dump_dot("output.dot", md, ignores);
 
    printf("\nAllocated %d bytes for string stash and %d bytes for parse structures\n\n", stash_allocated, malloc_allocated);
 

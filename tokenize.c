@@ -188,7 +188,7 @@ void pp_modules(struct Module_Def * md) {
    for(struct Module_Def * mi = md; mi != NULL; mi = mi->next) {
       
       printf("\nModule %s:\n", mi->name);
-      for(struct IO_Port * iter = mi->io_ports; iter != NULL; iter = iter->next ) printf("  io port: %s\n", iter->name);
+      //for(struct IO_Port * iter = mi->io_ports; iter != NULL; iter = iter->next ) printf("  io port: %s\n", iter->name);
       for(struct Module_Entity * iter = mi->entities; iter != NULL; iter = iter->next ) pp_mod_entity(iter);
 
       struct mod_count ** mod_list = unique_modules(mi);

@@ -79,6 +79,38 @@ struct mod_count ** unique_modules(struct Module_Def * md) {
    return modules;
 }
 
+int is_not_leaf(char * mod_type) {
+   if(0 == strncmp("dff",   mod_type, 3)) return 0;
+   if(0 == strncmp("VCC",   mod_type, 3)) return 0;
+   if(0 == strncmp("GND",   mod_type, 3)) return 0;
+   if(0 == strncmp("LUT",   mod_type, 3)) return 0;
+   if(0 == strncmp("RAM",   mod_type, 3)) return 0;
+   if(0 == strncmp("MUX",   mod_type, 3)) return 0;
+   if(0 == strncmp("SRL",   mod_type, 3)) return 0;
+   if(0 == strncmp("bw_r",  mod_type, 4)) return 0;
+   if(0 == strncmp("FDRE",  mod_type, 4)) return 0;
+   if(0 == strncmp("FDSE",  mod_type, 4)) return 0;
+   if(0 == strncmp("CARRY", mod_type, 5)) return 0;
+   return 1;
+}
+
+void dump_dot(char * fname, struct Module_Def * md) {
+   FILE * fd;
+   fd = fopen(fname, "w");
+
+   fprintf(fd, "digraph blah {\n" );
+   for(struct Module_Def * mi = md; mi != NULL; mi = mi->next) {
+      struct mod_count ** mod_list = unique_modules(mi);
+      for(; *mod_list != NULL; mod_list++ ) {
+         if(is_not_leaf((*mod_list)->nm)) fprintf(fd, "\t%s -> %s;\n", (*mod_list)->nm, mi->name);
+      }
+   }
+   fprintf(fd, "}\n" );
+
+   fclose(fd);
+
+   return;
+}
 
 int main(int ac, char **av) {
    printf("int: %lu, long: %lu, struct: %lu, enum: %lu\n", sizeof(int), sizeof(long), sizeof(struct token_s), sizeof(enum token_e) );
@@ -90,6 +122,7 @@ int main(int ac, char **av) {
    struct Module_Def * md = parse_file(tok_list);
 
    pp_modules(md);
+   dump_dot("output.dot", md);
 
    printf("\nAllocated %d bytes for string stash and %d bytes for parse structures\n\n", stash_allocated, malloc_allocated);
 

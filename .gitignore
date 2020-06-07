@@ -1,4 +1,5 @@
-main
+pnetlist
+*.o
 *.dSYM
 .DS_Store
 
